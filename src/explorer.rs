@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{Error, ErrorKind, Read},
+    io::{Error, Read},
     path::{Path, PathBuf},
 };
 
@@ -48,9 +48,9 @@ impl FileStruct {
                     files.push(entry.path());
                 }
             }
+            dirs.append(&mut files);
         }
 
-        dirs.append(&mut files);
         dirs
     }
 
@@ -58,11 +58,9 @@ impl FileStruct {
         let pwd = fs::canonicalize(path).unwrap();
         self.error = None;
         self.pwd = pwd.to_path_buf();
-        match self.pwd.parent() {
-            Some(parent) => self.parent = parent.to_path_buf(),
-            None => self.error = Some(Error::new(ErrorKind::NotFound, "oh no!")),
+        if let Some(parent) = self.pwd.parent() {
+            self.parent = parent.to_path_buf()
         }
-
         let files = FileStruct::get_dirs_and_files(pwd.as_path());
 
         self.current_state.select(Some(0));
@@ -73,9 +71,10 @@ impl FileStruct {
                 }
                 None => self.next_dir_fn(files[0].as_path()),
             }
+        } else if !files.is_empty() && files[0].is_file() {
+            self.read_file(files[0].to_path_buf());
         } else {
             self.next_dir.clear();
-            self.read_file(files[0].to_path_buf());
         }
 
         self.current_dir = files;
@@ -110,5 +109,19 @@ impl FileStruct {
             0
         });
         self.content = Some(content);
+    }
+
+    pub fn delete(&mut self, path: &Path) {
+        if path.is_dir() {
+            match fs::remove_dir_all(path) {
+                Ok(_) => {}
+                Err(error) => self.error = Some(error),
+            }
+        } else {
+            match fs::remove_file(path) {
+                Ok(_) => {}
+                Err(error) => self.error = Some(error),
+            }
+        }
     }
 }

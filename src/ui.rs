@@ -11,14 +11,27 @@ use ratatui::{
 
 use crate::explorer::FileStruct;
 
+pub enum ViewMode {
+    ListView,
+    ContentView,
+}
 pub struct FileScout {
     pub files: FileStruct,
+    pub text_scroll_y: u16,
+    pub text_scroll_x: u16,
+    pub mode: ViewMode,
     pub exit: bool,
 }
 
 impl FileScout {
     pub fn new(files: FileStruct) -> Self {
-        Self { files, exit: false }
+        Self {
+            files,
+            mode: ViewMode::ListView,
+            text_scroll_y: 0,
+            text_scroll_x: 0,
+            exit: false,
+        }
     }
 
     pub fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -109,23 +122,18 @@ impl FileScout {
 
         let padded_area = area.inner(Margin::new(1, 0));
 
-        let files = self
-            .files
-            .current_dir
-            .iter()
-            .enumerate()
-            .map(|(_, name)| {
-                let value = name
-                    .strip_prefix(&self.files.pwd)
-                    .unwrap()
-                    .to_str()
-                    .unwrap();
-                if name.is_dir() {
-                    ListItem::new(Line::from(value).fg(Color::Blue))
-                } else {
-                    ListItem::new(Line::from(value))
-                }
-            });
+        let files = self.files.current_dir.iter().enumerate().map(|(_, name)| {
+            let value = name
+                .strip_prefix(&self.files.pwd)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            if name.is_dir() {
+                ListItem::new(Line::from(value).fg(Color::Blue))
+            } else {
+                ListItem::new(Line::from(value))
+            }
+        });
 
         let list = List::new(files)
             .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
@@ -166,7 +174,10 @@ impl FileScout {
     fn render_content(&mut self, area: Rect, buf: &mut Buffer) {
         match &self.files.content {
             Some(content) => {
-                Widget::render(Text::from(format!("{}", content)), area, buf);
+                let text = Text::from(format!("{}", content));
+                Paragraph::new(text)
+                    .scroll((self.text_scroll_y, self.text_scroll_x))
+                    .render(area, buf);
             }
             None => {
                 Widget::render(Text::from("No content"), area, buf);
