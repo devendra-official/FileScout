@@ -1,5 +1,4 @@
 mod explorer;
-mod file_utils;
 mod key_events;
 mod ui;
 
