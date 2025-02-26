@@ -48,10 +48,19 @@ impl Widget for &mut FileScout {
         .areas(files_area);
 
         self.render_pwd(pwd_area, buf);
-        self.render_parent(parent_dir, buf);
         self.render_current(current_dir, buf);
+        self.render_parent(parent_dir, buf);
         if !self.files.current_dir.is_empty() {
-            self.render_files(files, buf);
+            match self.files.current_state.selected() {
+                Some(index) => {
+                    if self.files.current_dir[index].is_file() {
+                        self.render_content(files, buf);
+                    } else {
+                        self.render_sub(files, buf);
+                    }
+                }
+                None => {}
+            }
         }
         self.render_message(message, buf);
     }
@@ -105,25 +114,21 @@ impl FileScout {
             .current_dir
             .iter()
             .enumerate()
-            .map(|(index, name)| {
+            .map(|(_, name)| {
                 let value = name
                     .strip_prefix(&self.files.pwd)
                     .unwrap()
                     .to_str()
                     .unwrap();
                 if name.is_dir() {
-                    if self.files.current_state.selected() == Some(index) {
-                        ListItem::new(Line::from(value).bg(Color::Blue).fg(Color::White))
-                    } else {
-                        ListItem::new(Line::from(value).fg(Color::Blue))
-                    }
+                    ListItem::new(Line::from(value).fg(Color::Blue))
                 } else {
                     ListItem::new(Line::from(value))
                 }
             });
 
         let list = List::new(files)
-            .highlight_style(Style::new().bg(Color::Blue))
+            .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
             .scroll_padding(18);
         if !list.is_empty() {
             StatefulWidget::render(list, padded_area, buf, &mut self.files.current_state);
@@ -132,7 +137,7 @@ impl FileScout {
         }
     }
 
-    fn render_files(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_sub(&mut self, area: Rect, buf: &mut Buffer) {
         let padded_area = area.inner(Margin::new(1, 0));
 
         let files = self.files.next_dir.iter().enumerate().map(|(_, name)| {
@@ -155,6 +160,17 @@ impl FileScout {
             Widget::render(Text::from("No items"), area, buf);
         } else {
             Widget::render(list, padded_area, buf);
+        }
+    }
+
+    fn render_content(&mut self, area: Rect, buf: &mut Buffer) {
+        match &self.files.content {
+            Some(content) => {
+                Widget::render(Text::from(format!("{}", content)), area, buf);
+            }
+            None => {
+                Widget::render(Text::from("No content"), area, buf);
+            }
         }
     }
 

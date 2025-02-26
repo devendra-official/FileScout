@@ -54,9 +54,9 @@ impl FileStruct {
         dirs
     }
 
-    pub fn present_dir_fn(&mut self, path: &Path) {
+    pub fn present_dir_fn(&mut self, path: &Path, index: Option<usize>) {
         let pwd = fs::canonicalize(path).unwrap();
-
+        self.error = None;
         self.pwd = pwd.to_path_buf();
         match self.pwd.parent() {
             Some(parent) => self.parent = parent.to_path_buf(),
@@ -65,12 +65,17 @@ impl FileStruct {
 
         let files = FileStruct::get_dirs_and_files(pwd.as_path());
 
+        self.current_state.select(Some(0));
         if !files.is_empty() && files[0].is_dir() {
-            self.current_state.select(Some(0));
-            self.next_dir_fn(files[0].as_path());
+            match index {
+                Some(idx) => {
+                    self.next_dir_fn(files[idx].as_path());
+                }
+                None => self.next_dir_fn(files[0].as_path()),
+            }
         } else {
             self.next_dir.clear();
-            self.read_file();
+            self.read_file(files[0].to_path_buf());
         }
 
         self.current_dir = files;
@@ -91,16 +96,19 @@ impl FileStruct {
         self.parent_dir = files;
     }
 
-    fn read_file(&mut self) {
-        match self.current_state.selected() {
-            Some(index) => {
-                let path = self.current_dir[index].to_path_buf();
-                let mut file = File::open(path).unwrap();
-                let mut content = String::new();
-                file.read_to_string(&mut content).unwrap();
-                self.content = Some(content);
+    pub fn read_file(&mut self, path: PathBuf) {
+        let mut file = match File::open(&path) {
+            Ok(file) => file,
+            Err(error) => {
+                self.error = Some(error);
+                return;
             }
-            None => {}
-        }
+        };
+        let mut content = String::new();
+        file.read_to_string(&mut content).unwrap_or_else(|error| {
+            self.error = Some(error);
+            0
+        });
+        self.content = Some(content);
     }
 }

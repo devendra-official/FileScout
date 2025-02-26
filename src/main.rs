@@ -9,7 +9,7 @@ use ui::FileScout;
 
 fn main() {
     let mut file = FileStruct::default();
-    file.present_dir_fn(Path::new("."));
+    file.present_dir_fn(Path::new("."),None);
     let mut terminal: DefaultTerminal = ratatui::init();
     let app = FileScout::new(file);
     app.run(&mut terminal).unwrap();
