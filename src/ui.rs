@@ -186,6 +186,10 @@ impl FileScout {
     }
 
     fn render_message(&mut self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(Text::from(self.files.permission.as_str()).left_aligned().bold())
+                .style(Color::Blue)
+                .left_aligned()
+                .render(area, buf);
         if let Some(error) = &self.files.error {
             Paragraph::new(Text::from(error.to_string()).left_aligned().bold())
                 .style(Color::Red)
