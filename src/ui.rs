@@ -9,7 +9,7 @@ use ratatui::{
     DefaultTerminal,
 };
 
-use crate::explorer::FileStruct;
+use crate::{constant::COLORS, explorer::FileStruct};
 
 pub enum ViewMode {
     ListView,
@@ -19,6 +19,7 @@ pub struct FileScout {
     pub files: FileStruct,
     pub text_scroll_y: u16,
     pub text_scroll_x: u16,
+    pub color_index: usize,
     pub mode: ViewMode,
     pub exit: bool,
 }
@@ -30,6 +31,7 @@ impl FileScout {
             mode: ViewMode::ListView,
             text_scroll_y: 0,
             text_scroll_x: 0,
+            color_index: 0,
             exit: false,
         }
     }
@@ -81,12 +83,14 @@ impl Widget for &mut FileScout {
 
 impl FileScout {
     fn render_pwd(&self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new(Text::from(self.files.pwd.to_str().unwrap())).render(area, buf);
+        let (sel_color, _) = COLORS[self.color_index];
+        Paragraph::new(Text::from(self.files.pwd.to_str().unwrap().fg(sel_color)))
+            .render(area, buf);
     }
 
     fn render_parent(&mut self, area: Rect, buf: &mut Buffer) {
         let padded_area = area.inner(Margin::new(1, 0));
-
+        let (sel_color, un_color) = COLORS[self.color_index];
         let files = self
             .files
             .parent_dir
@@ -102,22 +106,23 @@ impl FileScout {
                     if self.files.pwd == self.files.parent_dir[index] {
                         self.files.parent_state.select(Some(index));
                     }
-                    ListItem::new(Line::from(value).fg(Color::Blue))
+                    ListItem::new(Line::from(value).fg(sel_color))
                 } else {
-                    ListItem::new(Line::from(value))
+                    ListItem::new(Line::from(value).fg(un_color))
                 }
             });
 
         let list = List::new(files)
-            .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
+            .highlight_style(Style::new().bg(sel_color).fg(un_color))
             .scroll_padding(18);
         StatefulWidget::render(list, padded_area, buf, &mut self.files.parent_state);
     }
 
     fn render_current(&mut self, area: Rect, buf: &mut Buffer) {
+        let (sel_color, un_color) = COLORS[self.color_index];
         Block::bordered()
             .borders(Borders::LEFT | Borders::RIGHT)
-            .border_style(Style::default())
+            .border_style(Style::new().fg(sel_color))
             .render(area, buf);
 
         let padded_area = area.inner(Margin::new(1, 0));
@@ -129,14 +134,13 @@ impl FileScout {
                 .to_str()
                 .unwrap();
             if name.is_dir() {
-                ListItem::new(Line::from(value).fg(Color::Blue))
+                ListItem::new(Line::from(value).fg(sel_color))
             } else {
-                ListItem::new(Line::from(value))
+                ListItem::new(Line::from(value).fg(un_color))
             }
         });
-
         let list = List::new(files)
-            .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
+            .highlight_style(Style::new().bg(sel_color).fg(un_color))
             .scroll_padding(18);
         if !list.is_empty() {
             StatefulWidget::render(list, padded_area, buf, &mut self.files.current_state);
@@ -147,6 +151,7 @@ impl FileScout {
 
     fn render_sub(&mut self, area: Rect, buf: &mut Buffer) {
         let padded_area = area.inner(Margin::new(1, 0));
+        let (sel_color, un_color) = COLORS[self.color_index];
 
         let files = self.files.next_dir.iter().enumerate().map(|(_, name)| {
             let value = name
@@ -155,42 +160,46 @@ impl FileScout {
                 .to_str()
                 .unwrap();
             if name.is_dir() {
-                ListItem::new(Line::from(value).fg(Color::Blue))
+                ListItem::new(Line::from(value).fg(sel_color))
             } else {
-                ListItem::new(Line::from(value))
+                ListItem::new(Line::from(value).fg(un_color))
             }
         });
 
         let list = List::new(files)
-            .highlight_style(Style::new().bg(Color::Blue).fg(Color::White))
+            .highlight_style(Style::new().bg(sel_color).fg(un_color))
             .scroll_padding(18);
         if list.is_empty() {
-            Widget::render(Text::from("No items"), area, buf);
+            Widget::render(Text::from("No items").fg(sel_color), area, buf);
         } else {
             Widget::render(list, padded_area, buf);
         }
     }
 
     fn render_content(&mut self, area: Rect, buf: &mut Buffer) {
-        match &self.files.content {
-            Some(content) => {
-                let text = Text::from(format!("{}", content));
-                Paragraph::new(text)
-                    .scroll((self.text_scroll_y, self.text_scroll_x))
-                    .render(area, buf);
-            }
-            None => {
-                Widget::render(Text::from("No content"), area, buf);
-            }
+        let (sel_col, un_col) = COLORS[self.color_index];
+        if !&self.files.content.is_empty() {
+            let text = Text::from(format!("{}", &self.files.content));
+            Paragraph::new(text.fg(un_col))
+                .scroll((self.text_scroll_y, self.text_scroll_x))
+                .render(area, buf);
+        } else {
+            Widget::render(Text::from("No content").fg(sel_col), area, buf);
         }
     }
 
     fn render_message(&mut self, area: Rect, buf: &mut Buffer) {
+        let (sel_color, _) = COLORS[self.color_index];
         #[cfg(unix)]
-        Paragraph::new(Text::from(self.files.permission.as_str()).left_aligned().bold())
-                .style(Color::Blue)
+        Paragraph::new(
+            Text::from(self.files.permission.as_str())
                 .left_aligned()
-                .render(area, buf);
+                .bold(),
+        )
+        .style(sel_color)
+        .left_aligned()
+        .render(area, buf);
+
         if let Some(error) = &self.files.error {
             Paragraph::new(Text::from(error.to_string()).left_aligned().bold())
                 .style(Color::Red)

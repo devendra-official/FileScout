@@ -1,23 +1,29 @@
-use std::{
-    fs::{self, File},
-    io::{Error, Read},
-    path::{Path, PathBuf},
-};
+use ratatui::widgets::ListState;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use ratatui::widgets::ListState;
+use std::{
+    fs::{self},
+    io::Error,
+    path::{Path, PathBuf},
+};
+
+// pub struct FileInfo {
+
+// }
 
 pub struct FileStruct {
     pub pwd: PathBuf,
     pub parent: PathBuf,
     pub next: PathBuf,
+    // pub file_info: FileInfo,
+    pub line_count: usize,
     pub current_dir: Vec<PathBuf>,
     pub current_state: ListState,
     pub parent_dir: Vec<PathBuf>,
     pub parent_state: ListState,
     pub next_dir: Vec<PathBuf>,
     pub error: Option<Error>,
-    pub content: Option<String>,
+    pub content: String,
     pub permission: String,
 }
 
@@ -25,6 +31,7 @@ impl FileStruct {
     pub fn default() -> Self {
         Self {
             pwd: PathBuf::default(),
+            line_count: 0,
             parent: PathBuf::default(),
             current_dir: Vec::new(),
             current_state: ListState::default(),
@@ -33,7 +40,7 @@ impl FileStruct {
             next_dir: Vec::new(),
             next: PathBuf::default(),
             error: None,
-            content: None,
+            content: String::new(),
             permission: String::new(),
         }
     }
@@ -106,19 +113,12 @@ impl FileStruct {
     pub fn read_file(&mut self, path: PathBuf) {
         #[cfg(unix)]
         self.file_permission(path.as_path());
-        let mut file = match File::open(&path) {
-            Ok(file) => file,
-            Err(error) => {
-                self.error = Some(error);
-                return;
-            }
-        };
-        let mut content = String::new();
-        file.read_to_string(&mut content).unwrap_or_else(|error| {
+        let line = fs::read_to_string(path).unwrap_or_else(|error| {
             self.error = Some(error);
-            0
+            String::new()
         });
-        self.content = Some(content);
+        self.line_count = line.lines().count();
+        self.content = line;
     }
 
     #[cfg(unix)]

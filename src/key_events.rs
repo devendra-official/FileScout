@@ -1,4 +1,7 @@
-use crate::ui::{FileScout, ViewMode};
+use crate::{
+    constant::COLORS,
+    ui::{FileScout, ViewMode},
+};
 use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind};
 
 pub fn handle_events(file: &mut FileScout) {
@@ -6,7 +9,7 @@ pub fn handle_events(file: &mut FileScout) {
         if kind == KeyEventKind::Press {
             match code {
                 KeyCode::Char('q') => file.exit = true,
-                KeyCode::Char('r') => {}
+                KeyCode::Char('c') => file.color_index = (file.color_index + 1) % COLORS.len(),
                 KeyCode::Delete => {
                     if let Some(index) = file.files.current_state.selected() {
                         let path = file.files.current_dir[index].to_path_buf();
@@ -48,7 +51,9 @@ pub fn handle_events(file: &mut FileScout) {
                         }
                     }
                     ViewMode::ContentView => {
-                        file.text_scroll_y = file.text_scroll_y.saturating_add(1)
+                        if file.text_scroll_y < file.files.line_count.saturating_sub(1) as u16 {
+                            file.text_scroll_y = file.text_scroll_y.saturating_add(1)
+                        }
                     }
                 },
                 KeyCode::Up => match file.mode {
