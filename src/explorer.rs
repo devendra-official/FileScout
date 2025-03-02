@@ -1,10 +1,10 @@
 use std::{
     fs::{self, File},
     io::{Error, Read},
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
-
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use ratatui::widgets::ListState;
 
 pub struct FileStruct {
@@ -75,9 +75,9 @@ impl FileStruct {
             if files[index].is_dir() {
                 self.next_dir_fn(files[index].as_path());
             } else if files[index].is_file() {
-                self.file_permission(files[index].as_path());
                 self.read_file(files[index].to_path_buf());
             } else {
+                #[cfg(unix)]
                 self.file_permission(files[index].as_path());
                 self.next_dir.clear();
             }
@@ -88,6 +88,7 @@ impl FileStruct {
     }
 
     pub fn next_dir_fn(&mut self, path: &Path) {
+        #[cfg(unix)]
         self.file_permission(path);
         let files = FileStruct::get_dirs_and_files(path);
         self.next = path.to_path_buf();
@@ -103,6 +104,7 @@ impl FileStruct {
     }
 
     pub fn read_file(&mut self, path: PathBuf) {
+        #[cfg(unix)]
         self.file_permission(path.as_path());
         let mut file = match File::open(&path) {
             Ok(file) => file,
@@ -119,6 +121,7 @@ impl FileStruct {
         self.content = Some(content);
     }
 
+    #[cfg(unix)]
     pub fn file_permission(&mut self, path: &Path) {
         match fs::metadata(path) {
             Ok(metadata) => {
@@ -144,6 +147,7 @@ impl FileStruct {
         }
     }
 
+    #[cfg(unix)]
     fn format_permissions(mode: u32) -> String {
         let mut permissions = String::new();
 

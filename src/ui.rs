@@ -186,6 +186,7 @@ impl FileScout {
     }
 
     fn render_message(&mut self, area: Rect, buf: &mut Buffer) {
+        #[cfg(unix)]
         Paragraph::new(Text::from(self.files.permission.as_str()).left_aligned().bold())
                 .style(Color::Blue)
                 .left_aligned()
