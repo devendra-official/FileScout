@@ -40,10 +40,7 @@ Use the arrow keys to navigate through directories and files. Press `Enter` to v
 - `Delete`: Delete the selected file
 - `Q`: Quit the application
 
-**Note:** This project is primarily for Linux. Some features may not be available on Windows.
-
 ## Contributing
-
 Contributions are welcome! Please open an issue or submit a pull request on GitHub.
 
 ## License
