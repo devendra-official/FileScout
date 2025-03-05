@@ -17,8 +17,9 @@ pub fn handle_events(file: &mut FileScout) {
                         let path = file.files.current_dir[index].to_path_buf();
                         file.files.delete(&path.as_path());
                         let path = file.files.pwd.to_path_buf();
-                        file.files.present_dir_fn(path.as_path(), Some(index - 1));
-                        file.files.current_state.select(Some(index - 1));
+                        let index = if index == 0 { 0 } else { index - 1 };
+                        file.files.present_dir_fn(path.as_path(), Some(index));
+                        file.files.current_state.select(Some(index));
                     }
                 }
                 KeyCode::Tab => match file.mode {
