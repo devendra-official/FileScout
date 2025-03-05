@@ -8,8 +8,10 @@ pub fn handle_events(file: &mut FileScout) {
     if let Ok(event::Event::Key(KeyEvent { code, kind, .. })) = event::read() {
         if kind == KeyEventKind::Press {
             match code {
-                KeyCode::Char('q') => file.exit = true,
-                KeyCode::Char('c') => file.color_index = (file.color_index + 1) % COLORS.len(),
+                KeyCode::Char('q') | KeyCode::Char('Q') => file.exit = true,
+                KeyCode::Char('c') | KeyCode::Char('C') => {
+                    file.color_index = (file.color_index + 1) % COLORS.len()
+                }
                 KeyCode::Delete => {
                     if let Some(index) = file.files.current_state.selected() {
                         let path = file.files.current_dir[index].to_path_buf();

@@ -5,8 +5,7 @@ File Scout is a command-line tool for exploring and managing files in your syste
 ## Features 
 
 - Navigate through directories
-- View file details
-- Perform file operations (copy, move, delete)
+- View text files
 - Keyboard shortcuts for quick actions
 
 ## Installation
@@ -20,20 +19,28 @@ cargo build --release
 
 After building the project, you can run the `file_scout` executable from the `target/release` directory:
 
+## Usage
+
+After building the project, you can run the `fs` executable from the release directory:
+
 ```sh
-./target/release/file_scout
+./target/release/fs
 ```
 
 Use the arrow keys to navigate through directories and files. Press `Enter` to view file details or perform operations on the selected file.
 
 ### Keyboard Shortcuts
 
-- `Up/Down Arrow`: Navigate through the list
-- `Enter`: View details or perform operations
-- `C`: Copy the selected file
-- `M`: Move the selected file
-- `D`: Delete the selected file
+- `Left Arrow`: Go to the parent directory or scroll left in the content view
+- `Right Arrow`: Enter the selected directory or scroll right in the content view
+- `Tab`: Toggle between list view and content view
+- `Up Arrow`: Move up in the list view or scroll up in the content view
+- `Down Arrow`: Move down in the list view or scroll down in the content view
+- `C`: Change the color scheme
+- `Delete`: Delete the selected file
 - `Q`: Quit the application
+
+**Note:** This project is primarily for Linux. Some features may not be available on Windows.
 
 ## Contributing
 
