@@ -31,17 +31,15 @@ pub fn handle_events(file: &mut FileScout) {
                 KeyCode::Char('d') | KeyCode::Char('D') => {
                     if let Some(index) = file.files.current_state.selected() {
                         let path = file.files.current_dir[index].to_path_buf();
-                        if path.is_file() && path.ends_with(".enc") {
+                        if path.is_file() {
                             file.files.decrypt_file(&path);
                             file.files.present_dir_fn(
                                 file.files.pwd.to_path_buf().as_path(),
                                 Some(index),
                             );
                         } else {
-                            file.files.error = Some(Error::new(
-                                ErrorKind::IsADirectory,
-                                "Not allowed!",
-                            ))
+                            file.files.error =
+                                Some(Error::new(ErrorKind::IsADirectory, "Not allowed!"))
                         }
                     }
                 }

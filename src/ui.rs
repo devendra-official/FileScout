@@ -189,6 +189,7 @@ impl FileScout {
     }
 
     fn render_message(&mut self, area: Rect, buf: &mut Buffer) {
+        #[cfg(unix)]
         let (sel_color, _) = COLORS[self.color_index];
         #[cfg(unix)]
         Paragraph::new(

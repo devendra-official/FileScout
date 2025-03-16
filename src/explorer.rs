@@ -199,13 +199,11 @@ impl FileStruct {
 
         if let Some(file_name) = path.file_name() {
             let file_name = file_name.to_str().unwrap();
-            let mut file_name = file_name.strip_suffix(".enc").unwrap().to_string();
-            let pwd = self.pwd.to_str().unwrap();
+            let file_name = file_name.strip_suffix(".enc").unwrap().to_string();
+            let mut path = self.pwd.to_path_buf();
+            path.push(file_name);
 
-            file_name.insert(0,'/');
-            file_name.insert_str(0, pwd);
-            
-            let mut file = File::create(Path::new(file_name.as_str())).unwrap();
+            let mut file = File::create(path).unwrap();
             file.write_all(&plaintext).unwrap();
         }
     }
@@ -224,11 +222,10 @@ impl FileStruct {
 
         if let Some(file_name) = path.file_name() {
             let file_name = file_name.to_str().unwrap();
-            let mut file_name = format!("/{}.enc", file_name);
-            let pwd = self.pwd.to_str().unwrap();
-            file_name.insert_str(0, pwd);
-
-            let mut file = File::create(Path::new(file_name.as_str())).unwrap();
+            let file_name = format!("{}.enc", file_name);
+            let mut path = self.pwd.to_path_buf();
+            path.push(file_name);
+            let mut file = File::create(path).unwrap();
             file.write_all(&nonce).unwrap();
             file.write_all(&ciphertext).unwrap();
         }
