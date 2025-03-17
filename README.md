@@ -33,7 +33,7 @@ Use the arrow keys to navigate through directories and files. Press `Enter` to v
 
 - `Left Arrow`: Go to the parent directory or scroll left in the content view
 - `Right Arrow`: Enter the selected directory or scroll right in the content view
-- `Tab`: Toggle between list view and content view
+- `Tab`: Toggle between list view and content view (Currently supported UTF-8 only)
 - `Up Arrow`: Move up in the list view or scroll up in the content view
 - `Down Arrow`: Move down in the list view or scroll down in the content view
 - `C`: Change the color scheme

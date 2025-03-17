@@ -1,19 +1,15 @@
-use aes_gcm::{
-    aead::{Aead, OsRng},
-    AeadCore, Aes256Gcm, KeyInit, Nonce,
-};
 use ratatui::widgets::ListState;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
-    fs::{self, File},
-    io::{Error, Read, Write},
+    fs::{self},
+    io::Error,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
-use crate::constant::KEY;
-
-pub struct FileStruct {
+#[derive(Default)]
+pub struct FileEX {
     pub pwd: PathBuf,
     pub parent: PathBuf,
     pub next: PathBuf,
@@ -26,26 +22,21 @@ pub struct FileStruct {
     pub error: Option<Error>,
     pub content: String,
     pub permission: String,
+    pub message: Option<String>,
 }
 
-impl FileStruct {
-    pub fn default() -> Self {
-        Self {
-            pwd: PathBuf::default(),
-            line_count: 0,
-            parent: PathBuf::default(),
-            current_dir: Vec::new(),
-            current_state: ListState::default(),
-            parent_dir: Vec::new(),
-            parent_state: ListState::default(),
-            next_dir: Vec::new(),
-            next: PathBuf::default(),
-            error: None,
-            content: String::new(),
-            permission: String::new(),
-        }
-    }
+#[derive(Default)]
+pub struct FileStruct {
+    pub file: Arc<Mutex<FileEX>>,
+}
 
+trait FileFun {
+    fn get_dirs_and_files(path: &Path) -> Vec<PathBuf>;
+    fn parent_dir_fn(file_struct: &mut FileEX);
+    fn format_permissions(mode: u32) -> String;
+}
+
+impl FileFun for FileStruct {
     fn get_dirs_and_files(path: &Path) -> Vec<PathBuf> {
         let mut dirs = Vec::new();
         let mut files = Vec::new();
@@ -61,92 +52,15 @@ impl FileStruct {
             }
             dirs.append(&mut files);
         }
-
         dirs
     }
 
-    pub fn present_dir_fn(&mut self, path: &Path, index: Option<usize>) {
-        let pwd = fs::canonicalize(path).unwrap();
-        self.error = None;
-        self.pwd = pwd.to_path_buf();
-        if let Some(parent) = self.pwd.parent() {
-            self.parent = parent.to_path_buf()
-        }
-        let files = FileStruct::get_dirs_and_files(pwd.as_path());
-
-        let index = match index {
-            Some(idx) => idx,
-            None => 0,
-        };
-        self.current_state.select(Some(index));
-
-        if !files.is_empty() {
-            if files[index].is_dir() {
-                self.next_dir_fn(files[index].as_path());
-            } else if files[index].is_file() {
-                self.read_file(files[index].to_path_buf());
-            } else {
-                #[cfg(unix)]
-                self.file_permission(files[index].as_path());
-                self.next_dir.clear();
-            }
-        }
-
-        self.current_dir = files;
-        self.parent_dir_fn();
-    }
-
-    pub fn next_dir_fn(&mut self, path: &Path) {
-        #[cfg(unix)]
-        self.file_permission(path);
-        let files = FileStruct::get_dirs_and_files(path);
-        self.next = path.to_path_buf();
-        self.next_dir = files;
-    }
-
-    fn parent_dir_fn(&mut self) {
+    fn parent_dir_fn(file_struct: &mut FileEX) {
         let mut files: Vec<PathBuf> = vec![];
-        if let Some(parent) = self.pwd.parent() {
+        if let Some(parent) = file_struct.pwd.parent() {
             files = FileStruct::get_dirs_and_files(parent);
         }
-        self.parent_dir = files;
-    }
-
-    pub fn read_file(&mut self, path: PathBuf) {
-        #[cfg(unix)]
-        self.file_permission(path.as_path());
-        let line = fs::read_to_string(path).unwrap_or_else(|error| {
-            self.error = Some(error);
-            String::new()
-        });
-        self.line_count = line.lines().count();
-        self.content = line;
-    }
-
-    #[cfg(unix)]
-    pub fn file_permission(&mut self, path: &Path) {
-        match fs::metadata(path) {
-            Ok(metadata) => {
-                let permissions = metadata.permissions();
-                let mode = permissions.mode();
-
-                let file_type = if metadata.is_dir() {
-                    'd'
-                } else if metadata.file_type().is_symlink() {
-                    'l'
-                } else {
-                    '-'
-                };
-                let mut permission = String::new();
-                permission.push(file_type);
-                let f_permission = FileStruct::format_permissions(mode);
-                permission.push_str(&f_permission);
-                self.permission = permission;
-            }
-            Err(error) => {
-                self.error = Some(error);
-            }
-        }
+        file_struct.parent_dir = files;
     }
 
     #[cfg(unix)]
@@ -169,65 +83,100 @@ impl FileStruct {
         }
         permissions
     }
+}
 
-    pub fn delete(&mut self, path: &Path) {
+impl FileStruct {
+    pub fn present_dir_fn(&mut self, path: &Path, index: Option<usize>) {
+        let file_struct_clone = Arc::clone(&self.file);
+        let mut file_struct = file_struct_clone.lock().unwrap();
+
+        let pwd = fs::canonicalize(path).unwrap();
+        file_struct.error = None;
+        file_struct.pwd = pwd.to_path_buf();
+        if let Some(parent) = file_struct.pwd.parent() {
+            file_struct.parent = parent.to_path_buf()
+        }
+        let files = FileStruct::get_dirs_and_files(pwd.as_path());
+
+        let index = match index {
+            Some(idx) => idx,
+            None => 0,
+        };
+        file_struct.current_state.select(Some(index));
+
+        if !files.is_empty() {
+            if files[index].is_dir() {
+                FileStruct::next_dir_fn(files[index].as_path(), &mut file_struct);
+            } else if files[index].is_file() {
+                FileStruct::read_file(files[index].to_path_buf(), &mut file_struct);
+            } else {
+                #[cfg(unix)]
+                FileStruct::file_permission(files[index].as_path(), &mut file_struct);
+                file_struct.next_dir.clear();
+            }
+        }
+
+        file_struct.current_dir = files;
+        FileStruct::parent_dir_fn(&mut file_struct);
+    }
+
+    pub fn next_dir_fn(path: &Path, file_struct: &mut FileEX) {
+        #[cfg(unix)]
+        FileStruct::file_permission(path, file_struct);
+        let files = FileStruct::get_dirs_and_files(path);
+        file_struct.next = path.to_path_buf();
+        file_struct.next_dir = files;
+    }
+
+    pub fn read_file(path: PathBuf, file_struct: &mut FileEX) {
+        #[cfg(unix)]
+        FileStruct::file_permission(path.as_path(), file_struct);
+        let line = fs::read_to_string(path).unwrap_or_else(|error| {
+            file_struct.error = Some(error);
+            String::new()
+        });
+        file_struct.line_count = line.lines().count();
+        file_struct.content = line;
+    }
+
+    #[cfg(unix)]
+    pub fn file_permission(path: &Path, file_struct: &mut FileEX) {
+        match fs::metadata(path) {
+            Ok(metadata) => {
+                let permissions = metadata.permissions();
+                let mode = permissions.mode();
+
+                let file_type = if metadata.is_dir() {
+                    'd'
+                } else if metadata.file_type().is_symlink() {
+                    'l'
+                } else {
+                    '-'
+                };
+                let mut permission = String::new();
+                permission.push(file_type);
+                let f_permission = FileStruct::format_permissions(mode);
+                permission.push_str(&f_permission);
+
+                file_struct.permission = permission;
+            }
+            Err(error) => {
+                file_struct.error = Some(error);
+            }
+        }
+    }
+
+    pub fn delete(path: &Path, file_struct: &mut FileEX) {
         if path.is_dir() {
             match fs::remove_dir_all(path) {
                 Ok(_) => {}
-                Err(error) => self.error = Some(error),
+                Err(error) => file_struct.error = Some(error),
             }
         } else {
             match fs::remove_file(path) {
                 Ok(_) => {}
-                Err(error) => self.error = Some(error),
+                Err(error) => file_struct.error = Some(error),
             }
-        }
-    }
-
-    pub fn decrypt_file(&mut self, path: &Path) {
-        let key = KEY;
-        let key = key.as_bytes();
-        let mut file = File::open(path).unwrap();
-        let mut encrypted_data = Vec::new();
-        file.read_to_end(&mut encrypted_data).unwrap();
-
-        let nonce = Nonce::from_slice(&encrypted_data[..12]);
-        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
-
-        let ciphertext = &encrypted_data[12..];
-        let plaintext = cipher.decrypt(&nonce, ciphertext).unwrap();
-
-        if let Some(file_name) = path.file_name() {
-            let file_name = file_name.to_str().unwrap();
-            let file_name = file_name.strip_suffix(".enc").unwrap().to_string();
-            let mut path = self.pwd.to_path_buf();
-            path.push(file_name);
-
-            let mut file = File::create(path).unwrap();
-            file.write_all(&plaintext).unwrap();
-        }
-    }
-
-    pub fn encrypt_file(&mut self, path: &Path) {
-        let key = KEY;
-        let key = key.as_bytes();
-        let mut file = File::open(path).unwrap();
-        let mut buf = Vec::new();
-
-        file.read_to_end(&mut buf).unwrap();
-
-        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-        let ciphertext = cipher.encrypt(&nonce, buf.as_ref()).unwrap();
-
-        if let Some(file_name) = path.file_name() {
-            let file_name = file_name.to_str().unwrap();
-            let file_name = format!("{}.enc", file_name);
-            let mut path = self.pwd.to_path_buf();
-            path.push(file_name);
-            let mut file = File::create(path).unwrap();
-            file.write_all(&nonce).unwrap();
-            file.write_all(&ciphertext).unwrap();
         }
     }
 }

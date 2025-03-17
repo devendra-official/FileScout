@@ -12,4 +12,4 @@ pub const COLORS: [(Color, Color); 9] = [
     (Color::LightBlue, Color::DarkGray),
 ];
 
-pub const KEY: &str = "qwertyuiopasdfghjklzxcvbnmqwerty";
+pub const KEY: &str = "mY2$3GzK!7a9VbQjL1^XwFc%rLp0tZde";

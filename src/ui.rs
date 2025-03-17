@@ -1,4 +1,4 @@
-use std::io::Result;
+use std::{io::Result, sync::Arc};
 
 use ratatui::{
     buffer::Buffer,
@@ -9,7 +9,10 @@ use ratatui::{
     DefaultTerminal,
 };
 
-use crate::{constant::COLORS, explorer::FileStruct};
+use crate::{
+    constant::COLORS,
+    explorer::{FileEX, FileStruct},
+};
 
 pub enum ViewMode {
     ListView,
@@ -61,64 +64,67 @@ impl Widget for &mut FileScout {
             Constraint::Fill(1),
         ])
         .areas(files_area);
+        let files_struct_clone = Arc::clone(&self.files.file);
+        let mut file_ex = files_struct_clone.lock().unwrap();
+        self.render_pwd(pwd_area, buf, &mut file_ex);
+        self.render_current(current_dir, buf, &mut file_ex);
+        self.render_parent(parent_dir, buf, &mut file_ex);
 
-        self.render_pwd(pwd_area, buf);
-        self.render_current(current_dir, buf);
-        self.render_parent(parent_dir, buf);
-        if !self.files.current_dir.is_empty() {
-            match self.files.current_state.selected() {
+        if !file_ex.current_dir.is_empty() {
+            match file_ex.current_state.selected() {
                 Some(index) => {
-                    if self.files.current_dir[index].is_file() {
-                        self.render_content(files, buf);
+                    if file_ex.current_dir[index].is_file() {
+                        self.render_content(files, buf, &mut file_ex);
                     } else {
-                        self.render_sub(files, buf);
+                        self.render_sub(files, buf, &mut file_ex);
                     }
                 }
                 None => {}
             }
         }
-        self.render_message(message, buf);
+        self.render_message(message, buf, &mut file_ex);
     }
 }
 
 impl FileScout {
-    fn render_pwd(&self, area: Rect, buf: &mut Buffer) {
+    fn render_pwd(&self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
         let (sel_color, _) = COLORS[self.color_index];
-        Paragraph::new(Text::from(self.files.pwd.to_str().unwrap().fg(sel_color)))
+        Paragraph::new(Text::from(file_struct.pwd.to_str().unwrap().fg(sel_color)))
             .render(area, buf);
     }
 
-    fn render_parent(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_parent(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
         let padded_area = area.inner(Margin::new(1, 0));
         let (sel_color, un_color) = COLORS[self.color_index];
-        let files = self
-            .files
+
+        let selected_index = file_struct
             .parent_dir
             .iter()
-            .enumerate()
-            .map(|(index, name)| {
-                let value = name
-                    .strip_prefix(&self.files.parent)
-                    .unwrap()
-                    .to_str()
-                    .unwrap();
-                if name.is_dir() {
-                    if self.files.pwd == self.files.parent_dir[index] {
-                        self.files.parent_state.select(Some(index));
-                    }
-                    ListItem::new(Line::from(value).fg(sel_color))
-                } else {
-                    ListItem::new(Line::from(value).fg(un_color))
-                }
-            });
+            .position(|path| file_struct.pwd == *path);
+
+        file_struct.parent_state.select(selected_index);
+
+        let files = file_struct.parent_dir.iter().map(|name| {
+            let value = name
+                .strip_prefix(&file_struct.parent)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            if name.is_dir() {
+                ListItem::new(Line::from(value).fg(sel_color))
+            } else {
+                ListItem::new(Line::from(value).fg(un_color))
+            }
+        });
 
         let list = List::new(files)
             .highlight_style(Style::new().bg(sel_color).fg(un_color))
             .scroll_padding(18);
-        StatefulWidget::render(list, padded_area, buf, &mut self.files.parent_state);
+
+        StatefulWidget::render(list, padded_area, buf, &mut file_struct.parent_state);
     }
 
-    fn render_current(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_current(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
         let (sel_color, un_color) = COLORS[self.color_index];
         Block::bordered()
             .borders(Borders::LEFT | Borders::RIGHT)
@@ -127,9 +133,9 @@ impl FileScout {
 
         let padded_area = area.inner(Margin::new(1, 0));
 
-        let files = self.files.current_dir.iter().enumerate().map(|(_, name)| {
+        let files = file_struct.current_dir.iter().enumerate().map(|(_, name)| {
             let value = name
-                .strip_prefix(&self.files.pwd)
+                .strip_prefix(file_struct.pwd.to_path_buf())
                 .unwrap()
                 .to_str()
                 .unwrap();
@@ -143,19 +149,19 @@ impl FileScout {
             .highlight_style(Style::new().bg(sel_color).fg(un_color))
             .scroll_padding(18);
         if !list.is_empty() {
-            StatefulWidget::render(list, padded_area, buf, &mut self.files.current_state);
+            StatefulWidget::render(list, padded_area, buf, &mut file_struct.current_state);
         } else {
             Widget::render(Text::from("No items"), padded_area, buf);
         }
     }
 
-    fn render_sub(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_sub(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
         let padded_area = area.inner(Margin::new(1, 0));
         let (sel_color, un_color) = COLORS[self.color_index];
 
-        let files = self.files.next_dir.iter().enumerate().map(|(_, name)| {
+        let files = file_struct.next_dir.iter().enumerate().map(|(_, name)| {
             let value = name
-                .strip_prefix(&self.files.next)
+                .strip_prefix(file_struct.next.to_path_buf())
                 .unwrap()
                 .to_str()
                 .unwrap();
@@ -176,10 +182,10 @@ impl FileScout {
         }
     }
 
-    fn render_content(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_content(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
         let (sel_col, un_col) = COLORS[self.color_index];
-        if !&self.files.content.is_empty() {
-            let text = Text::from(format!("{}", &self.files.content));
+        if !file_struct.content.is_empty() {
+            let text = Text::from(format!("{}", file_struct.content));
             Paragraph::new(text.fg(un_col))
                 .scroll((self.text_scroll_y, self.text_scroll_x))
                 .render(area, buf);
@@ -188,12 +194,12 @@ impl FileScout {
         }
     }
 
-    fn render_message(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_message(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
         #[cfg(unix)]
         let (sel_color, _) = COLORS[self.color_index];
         #[cfg(unix)]
         Paragraph::new(
-            Text::from(self.files.permission.as_str())
+            Text::from(file_struct.permission.as_str())
                 .left_aligned()
                 .bold(),
         )
@@ -201,7 +207,12 @@ impl FileScout {
         .left_aligned()
         .render(area, buf);
 
-        if let Some(error) = &self.files.error {
+        if let Some(messgae) = &file_struct.message {
+            Paragraph::new(Text::from(messgae.as_str()).left_aligned().bold())
+                .style(Color::Green)
+                .right_aligned()
+                .render(area, buf);
+        } else if let Some(error) = &file_struct.error {
             Paragraph::new(Text::from(error.to_string()).left_aligned().bold())
                 .style(Color::Red)
                 .right_aligned()
