@@ -33,6 +33,7 @@ pub struct FileStruct {
 trait FileFun {
     fn get_dirs_and_files(path: &Path) -> Vec<PathBuf>;
     fn parent_dir_fn(file_struct: &mut FileEX);
+    #[cfg(unix)]
     fn format_permissions(mode: u32) -> String;
 }
 
