@@ -1,4 +1,7 @@
-use std::{io::Result, sync::Arc};
+use std::{
+    io::Result,
+    sync::{Arc, Mutex},
+};
 
 use ratatui::{
     buffer::Buffer,
@@ -9,17 +12,15 @@ use ratatui::{
     DefaultTerminal,
 };
 
-use crate::{
-    constant::COLORS,
-    explorer::{FileEX, FileStruct},
-};
+use crate::{constant::COLORS, explorer::FileStruct};
 
 pub enum ViewMode {
     ListView,
     ContentView,
 }
+
 pub struct FileScout {
-    pub files: FileStruct,
+    pub files: Arc<Mutex<FileStruct>>,
     pub text_scroll_y: u16,
     pub text_scroll_x: u16,
     pub color_index: usize,
@@ -30,7 +31,7 @@ pub struct FileScout {
 impl FileScout {
     pub fn new(files: FileStruct) -> Self {
         Self {
-            files,
+            files: Arc::new(Mutex::new(files)),
             mode: ViewMode::ListView,
             text_scroll_y: 0,
             text_scroll_x: 0,
@@ -64,8 +65,10 @@ impl Widget for &mut FileScout {
             Constraint::Fill(1),
         ])
         .areas(files_area);
-        let files_struct_clone = Arc::clone(&self.files.file);
+
+        let files_struct_clone = Arc::clone(&self.files);
         let mut file_ex = files_struct_clone.lock().unwrap();
+
         self.render_pwd(pwd_area, buf, &mut file_ex);
         self.render_current(current_dir, buf, &mut file_ex);
         self.render_parent(parent_dir, buf, &mut file_ex);
@@ -87,13 +90,13 @@ impl Widget for &mut FileScout {
 }
 
 impl FileScout {
-    fn render_pwd(&self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
+    fn render_pwd(&self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
         let (sel_color, _) = COLORS[self.color_index];
         Paragraph::new(Text::from(file_struct.pwd.to_str().unwrap().fg(sel_color)))
             .render(area, buf);
     }
 
-    fn render_parent(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
+    fn render_parent(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
         let padded_area = area.inner(Margin::new(1, 0));
         let (sel_color, un_color) = COLORS[self.color_index];
 
@@ -103,7 +106,6 @@ impl FileScout {
             .position(|path| file_struct.pwd == *path);
 
         file_struct.parent_state.select(selected_index);
-
         let files = file_struct.parent_dir.iter().map(|name| {
             let value = name
                 .strip_prefix(&file_struct.parent)
@@ -124,7 +126,7 @@ impl FileScout {
         StatefulWidget::render(list, padded_area, buf, &mut file_struct.parent_state);
     }
 
-    fn render_current(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
+    fn render_current(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
         let (sel_color, un_color) = COLORS[self.color_index];
         Block::bordered()
             .borders(Borders::LEFT | Borders::RIGHT)
@@ -155,7 +157,7 @@ impl FileScout {
         }
     }
 
-    fn render_sub(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
+    fn render_sub(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
         let padded_area = area.inner(Margin::new(1, 0));
         let (sel_color, un_color) = COLORS[self.color_index];
 
@@ -182,7 +184,7 @@ impl FileScout {
         }
     }
 
-    fn render_content(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
+    fn render_content(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
         let (sel_col, un_col) = COLORS[self.color_index];
         if !file_struct.content.is_empty() {
             let text = Text::from(format!("{}", file_struct.content));
@@ -194,7 +196,7 @@ impl FileScout {
         }
     }
 
-    fn render_message(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileEX) {
+    fn render_message(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
         #[cfg(unix)]
         let (sel_color, _) = COLORS[self.color_index];
         #[cfg(unix)]
@@ -207,12 +209,7 @@ impl FileScout {
         .left_aligned()
         .render(area, buf);
 
-        if let Some(messgae) = &file_struct.message {
-            Paragraph::new(Text::from(messgae.as_str()).left_aligned().bold())
-                .style(Color::Green)
-                .right_aligned()
-                .render(area, buf);
-        } else if let Some(error) = &file_struct.error {
+        if let Some(error) = &file_struct.error {
             Paragraph::new(Text::from(error.to_string()).left_aligned().bold())
                 .style(Color::Red)
                 .right_aligned()

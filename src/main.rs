@@ -11,7 +11,6 @@ use std::path::Path;
 use ui::FileScout;
 
 fn main() -> Result<()> {
-    
     color_eyre::install()?;
     let mut file = FileStruct::default();
     file.present_dir_fn(Path::new("."), None);

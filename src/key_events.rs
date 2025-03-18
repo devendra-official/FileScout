@@ -6,15 +6,16 @@ use std::{
 
 use crate::{
     constant::COLORS,
-    explorer::FileStruct,
     crypto_handler::{AesEncryptor, FileCipher},
+    explorer::FileStruct,
     ui::{FileScout, ViewMode},
 };
 use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind};
 
 pub fn handle_events(file: &mut FileScout) {
-    let file_clone = Arc::clone(&file.files.file);
+    let file_clone = Arc::clone(&file.files);
     let mut file_struct = file_clone.lock().unwrap();
+
     if let Ok(event::Event::Key(KeyEvent { code, kind, .. })) = event::read() {
         if kind == KeyEventKind::Press {
             match code {
@@ -28,17 +29,13 @@ pub fn handle_events(file: &mut FileScout) {
                                 let file_name = format!("{}.enc", file_name);
                                 let mut pwd = file_struct.pwd.to_path_buf();
                                 pwd.push(file_name);
-                                let message_clone = Arc::clone(&file.files.file);
+                                let message_clone = Arc::clone(&file.files);
                                 thread::spawn(move || {
-                                    {
-                                        let mut msg = message_clone.lock().unwrap();
-                                        msg.message = Some("Encrypting File...".to_string());
-                                    }
                                     AesEncryptor::initialize().encrypt_file(&path, &pwd);
-                                    {
-                                        let mut msg = message_clone.lock().unwrap();
-                                        msg.message =
-                                            Some("File Encryption completed...".to_string());
+                                    let mut msg = message_clone.lock().unwrap();
+                                    let pwd = msg.pwd.to_path_buf();
+                                    if let Some(index) = msg.current_state.selected() {
+                                        msg.present_dir_fn(&pwd, Some(index));
                                     }
                                 });
                             }
@@ -63,16 +60,13 @@ pub fn handle_events(file: &mut FileScout) {
                                     .to_string();
                                 let mut output_path = file_struct.pwd.to_path_buf();
                                 output_path.push(file_name);
-                                let message_clone = Arc::clone(&file.files.file);
+                                let message_clone = Arc::clone(&file.files);
                                 thread::spawn(move || {
-                                    {
-                                        let mut msg = message_clone.lock().unwrap();
-                                        msg.message = Some("Decrypting File...".to_string());
-                                    }
                                     AesEncryptor::initialize().decrypt_file(&path, &output_path);
-                                    {
-                                        let mut msg = message_clone.lock().unwrap();
-                                        msg.message = Some("Completed file Decryption".to_string());
+                                    let mut msg = message_clone.lock().unwrap();
+                                    let pwd = msg.pwd.to_path_buf();
+                                    if let Some(index) = msg.current_state.selected() {
+                                        msg.present_dir_fn(&pwd, Some(index));
                                     }
                                 });
                             }
@@ -91,8 +85,7 @@ pub fn handle_events(file: &mut FileScout) {
                         FileStruct::delete(&path.as_path(), &mut file_struct);
                         let path = file_struct.pwd.to_path_buf();
                         let index = if index == 0 { 0 } else { index - 1 };
-                        drop(file_struct);
-                        file.files.present_dir_fn(path.as_path(), Some(index));
+                        file_struct.present_dir_fn(path.as_path(), Some(index));
                     }
                 }
                 KeyCode::Tab => match file.mode {
@@ -119,10 +112,10 @@ pub fn handle_events(file: &mut FileScout) {
                                 && file_struct.current_dir[index].is_dir()
                             {
                                 let path = file_struct.current_dir[index].to_path_buf();
-                                FileStruct::next_dir_fn(&path.as_path(), &mut file_struct);
+                                file_struct.next_dir_fn(&path.as_path());
                             } else if file_struct.current_dir.len() > index {
                                 let file_path = file_struct.current_dir[index].to_path_buf();
-                                FileStruct::read_file(file_path, &mut file_struct);
+                                file_struct.read_file(file_path);
                             }
                         }
                     }
@@ -142,10 +135,10 @@ pub fn handle_events(file: &mut FileScout) {
                                 && file_struct.current_dir[index].is_dir()
                             {
                                 let path = file_struct.current_dir[index].to_path_buf();
-                                FileStruct::next_dir_fn(&path.as_path(), &mut file_struct);
+                                file_struct.next_dir_fn(&path.as_path());
                             } else if file_struct.current_dir.len() > index {
                                 let file_path = file_struct.current_dir[index].to_path_buf();
-                                FileStruct::read_file(file_path, &mut file_struct);
+                                file_struct.read_file(file_path);
                             }
                         }
                     }
@@ -160,11 +153,10 @@ pub fn handle_events(file: &mut FileScout) {
                                 && file_struct.current_dir[index].is_dir()
                             {
                                 let path = file_struct.current_dir[index].to_path_buf();
-                                drop(file_struct);
-                                file.files.present_dir_fn(path.as_path(), None);
+                                file_struct.present_dir_fn(path.as_path(), None);
                             } else if file_struct.current_dir.len() > index {
                                 let file_path = file_struct.current_dir[index].to_path_buf();
-                                FileStruct::read_file(file_path, &mut file_struct);
+                                file_struct.read_file(file_path);
                             }
                         }
                     }
@@ -176,8 +168,7 @@ pub fn handle_events(file: &mut FileScout) {
                     ViewMode::ListView => {
                         if let Some(index) = file_struct.parent_state.selected() {
                             let path = file_struct.parent.to_path_buf();
-                            drop(file_struct);
-                            file.files.present_dir_fn(&path.as_path(), Some(index));
+                            file_struct.present_dir_fn(&path.as_path(), Some(index));
                         }
                     }
                     ViewMode::ContentView => {
