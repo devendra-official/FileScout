@@ -41,9 +41,6 @@ Use the arrow keys to navigate through directories and files. Press `Enter` to v
 - `D`: File Decryption
 - `Delete`: Delete the selected file
 - `Q`: Quit the application
-  
-> [!CAUTION]
-> **Some file may not be decrypted use carefully.**
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request on GitHub.
