@@ -11,11 +11,6 @@ use aes_gcm::{
 
 use crate::constant::KEY;
 
-pub trait FileCipher {
-    fn decrypt_file(&self, path: &Path, file_path: &Path);
-    fn encrypt_file(&self, path: &Path, file_path: &Path);
-}
-
 pub struct AesEncryptor<'a> {
     key: &'a [u8],
 }
@@ -28,23 +23,24 @@ impl AesEncryptor<'static> {
     }
 }
 
-impl FileCipher for AesEncryptor<'static> {
-    fn decrypt_file(&self, path: &Path, file_path: &Path) {
-        let mut file = File::open(path).unwrap();
-        let mut encrypted_data = Vec::new();
-        file.read_to_end(&mut encrypted_data).unwrap();
+impl AesEncryptor<'static> {
+    pub fn decrypt_file(&self, path: &Path, file_path: &Path) {
+        if let Ok(mut file) = File::open(path) {
+            let mut encrypted_data = Vec::new();
+            file.read_to_end(&mut encrypted_data).unwrap();
 
-        let nonce = Nonce::from_slice(&encrypted_data[..12]);
-        let cipher = Aes256Gcm::new_from_slice(self.key).unwrap();
+            let nonce = Nonce::from_slice(&encrypted_data[..12]);
+            let cipher = Aes256Gcm::new_from_slice(self.key).unwrap();
 
-        let ciphertext = &encrypted_data[12..];
-        let plaintext = cipher.decrypt(&nonce, ciphertext).unwrap();
+            let ciphertext = &encrypted_data[12..];
+            let plaintext = cipher.decrypt(&nonce, ciphertext).unwrap();
 
-        let mut file = File::create(file_path).unwrap();
-        file.write_all(&plaintext).unwrap();
+            let mut file = File::create(file_path).unwrap();
+            file.write_all(&plaintext).unwrap();
+        }
     }
 
-    fn encrypt_file(&self, path: &Path, output: &Path) {
+    pub fn encrypt_file(&self, path: &Path, output: &Path) {
         let mut file = File::open(path).unwrap();
         let mut buf = Vec::new();
 

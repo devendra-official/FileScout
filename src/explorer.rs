@@ -2,7 +2,7 @@ use ratatui::widgets::ListState;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
-    fs::{self},
+    fs,
     io::Error,
     path::{Path, PathBuf},
 };
@@ -12,6 +12,7 @@ pub struct FileStruct {
     pub pwd: PathBuf,
     pub parent: PathBuf,
     pub next: PathBuf,
+    pub current_path: Option<PathBuf>,
     pub line_count: usize,
     pub current_dir: Vec<PathBuf>,
     pub current_state: ListState,
@@ -94,7 +95,7 @@ impl FileStruct {
             None => 0,
         };
         self.current_state.select(Some(index));
-
+        self.current_path = Some(files[index].to_path_buf());
         if !files.is_empty() {
             if files[index].is_dir() {
                 self.next_dir_fn(files[index].as_path());
@@ -168,6 +169,13 @@ impl FileStruct {
                 Ok(_) => {}
                 Err(error) => file_struct.error = Some(error),
             }
+        }
+    }
+
+    pub fn rename(&mut self, rename: &str) {
+        if let Some(path) = &self.current_path {
+            let name = path.file_name().unwrap().to_str().unwrap();
+            fs::rename(name, rename).unwrap_or_else(|error| self.error = Some(error));
         }
     }
 }

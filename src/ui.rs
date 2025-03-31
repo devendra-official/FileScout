@@ -6,10 +6,10 @@ use std::{
 use crossterm::event::{Event, EventStream, KeyEvent, KeyEventKind};
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Layout, Margin, Rect},
+    layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, StatefulWidget, Widget},
     DefaultTerminal,
 };
 use tokio::sync::mpsc;
@@ -20,10 +20,18 @@ use crate::{constant::COLORS, explorer::FileStruct};
 pub enum ViewMode {
     ListView,
     ContentView,
+    Edit,
+}
+
+#[derive(Default)]
+pub struct Input {
+    pub name: String,
+    pub index: usize,
 }
 
 pub struct FileScout {
     pub files: Arc<Mutex<FileStruct>>,
+    pub input: Input,
     pub text_scroll_y: u16,
     pub text_scroll_x: u16,
     pub color_index: usize,
@@ -36,6 +44,7 @@ impl FileScout {
         Self {
             files: Arc::new(Mutex::new(files)),
             mode: ViewMode::ListView,
+            input: Input::default(),
             text_scroll_y: 0,
             text_scroll_x: 0,
             color_index: 0,
@@ -171,6 +180,29 @@ impl FileScout {
         } else {
             Widget::render(Text::from("No items"), padded_area, buf);
         }
+        match self.mode {
+            ViewMode::Edit => self.render_window(padded_area, buf),
+            _ => {}
+        }
+    }
+
+    fn render_window(&mut self, area: Rect, buf: &mut Buffer) {
+        let (sel_color, _) = COLORS[self.color_index];
+        let [window] = Layout::horizontal([Constraint::Percentage(80)]).areas(area);
+        let [window] = Layout::vertical([Constraint::Length(3)])
+            .flex(Flex::Center)
+            .areas(window);
+
+        Clear::default().render(window, buf);
+        let title = Line::from("Rename: ");
+        let block = Block::bordered()
+            .title(title)
+            .title_alignment(Alignment::Left)
+            .border_style(Style::new().fg(sel_color));
+
+        Paragraph::new(self.input.name.as_str())
+            .block(block)
+            .render(window, buf);
     }
 
     fn render_sub(&mut self, area: Rect, buf: &mut Buffer, file_struct: &mut FileStruct) {
