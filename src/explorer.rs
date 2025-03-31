@@ -131,7 +131,7 @@ impl FileStruct {
     }
 
     #[cfg(unix)]
-    pub fn file_permission(&mut self, path: &Path) {
+    fn file_permission(&mut self, path: &Path) {
         match fs::metadata(path) {
             Ok(metadata) => {
                 let permissions = metadata.permissions();

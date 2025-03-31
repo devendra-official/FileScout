@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crossterm::event::{Event, EventStream, KeyEvent, KeyEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Margin, Rect},
@@ -11,6 +12,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, StatefulWidget, Widget},
     DefaultTerminal,
 };
+use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
 
 use crate::{constant::COLORS, explorer::FileStruct};
 
@@ -40,11 +43,24 @@ impl FileScout {
         }
     }
 
-    pub fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+    pub async fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         use crate::key_events::handle_events;
+        let mut reader = EventStream::new();
+        let (tx, mut rx) = mpsc::channel::<String>(1);
         while !self.exit {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
-            handle_events(&mut self);
+            tokio::select! {
+                Some(Ok(event)) = reader.next() => {
+                    match event {
+                        Event::Key(KeyEvent { code, kind, .. }) if kind == KeyEventKind::Press => {
+                            handle_events(&mut self, code, tx.clone());
+                        }
+                        Event::Resize(_, _) => continue,
+                        _ => {}
+                    }
+                }
+                Some(_) = rx.recv() => continue,
+            }
         }
         Ok(())
     }
