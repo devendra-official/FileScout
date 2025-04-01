@@ -35,6 +35,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                     file_struct.present_dir_fn(&pwd, Some(index));
                 }
             }
+            KeyCode::Esc => file.mode = ViewMode::ListView,
             _ => {}
         },
         _ => match code {
@@ -149,8 +150,6 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                     file_struct.error = None;
                     file_struct.current_state.select_next();
                     if let Some(index) = file_struct.current_state.selected() {
-                        file_struct.current_path =
-                            Some(file_struct.current_dir[index].to_path_buf());
                         if file_struct.current_dir.len() > index
                             && file_struct.current_dir[index].is_dir()
                         {
@@ -168,7 +167,11 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                                         Some(Error::new(ErrorKind::Other, "something went wrong"))
                                 }
                             });
+                        } else {
+                            return;
                         }
+                        file_struct.current_path =
+                            Some(file_struct.current_dir[index].to_path_buf());
                     }
                 }
                 ViewMode::ContentView => {
