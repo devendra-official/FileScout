@@ -3,7 +3,7 @@ use ratatui::widgets::ListState;
 use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
-    io::Error,
+    io::{Error, Result},
     path::{Path, PathBuf},
 };
 
@@ -174,8 +174,10 @@ impl FileStruct {
 
     pub fn rename(&mut self, rename: &str) {
         if let Some(path) = &self.current_path {
-            let name = path.file_name().unwrap().to_str().unwrap();
-            fs::rename(name, rename).unwrap_or_else(|error| self.error = Some(error));
+            if let Some(re) = path.parent() {
+                let rename = re.join(rename);
+                fs::rename(path, rename).unwrap_or_else(|error| self.error = Some(error));
+            }
         }
     }
 }

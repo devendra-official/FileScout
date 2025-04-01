@@ -10,7 +10,7 @@ use crate::{
     ui::{FileScout, ViewMode},
 };
 use crossterm::event::KeyCode;
-use tokio::{sync::mpsc::Sender, task};
+use tokio::sync::mpsc::Sender;
 
 pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
     let file_clone = Arc::clone(&file.files);
@@ -27,7 +27,6 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                 file.input.index = file.input.index.saturating_sub(1);
             }
             KeyCode::Enter => {
-                file.input.index = file.input.name.len();
                 file_struct.rename(&file.input.name);
                 file.mode = ViewMode::ListView;
                 let pwd = file_struct.pwd.to_path_buf();
@@ -57,19 +56,37 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                             let mut pwd = file_struct.pwd.to_path_buf();
                             pwd.push(file_name);
                             let message_clone = Arc::clone(&file.files);
-                            task::spawn(async move {
-                                AesEncryptor::initialize().encrypt_file(&path, &pwd);
-                                let mut msg = message_clone.lock().unwrap();
-                                let pwd = msg.pwd.to_path_buf();
-                                if let Some(index) = msg.current_state.selected() {
-                                    msg.present_dir_fn(&pwd, Some(index));
-                                }
-                                if tx
-                                    .try_send(String::from("File Encryption completed"))
-                                    .is_err()
-                                {
-                                    msg.error =
-                                        Some(Error::new(ErrorKind::Other, "Failed to refresh"))
+                            tokio::spawn(async move {
+                                match AesEncryptor::new().encrypt_file(&path, &pwd) {
+                                    Ok(()) => {
+                                        let mut msg = message_clone.lock().unwrap();
+                                        let pwd = msg.pwd.to_path_buf();
+                                        if let Some(index) = msg.current_state.selected() {
+                                            msg.present_dir_fn(&pwd, Some(index));
+                                        }
+                                        if tx
+                                            .try_send(String::from("File Encryption completed"))
+                                            .is_err()
+                                        {
+                                            msg.error = Some(Error::new(
+                                                ErrorKind::Other,
+                                                "Failed to refresh",
+                                            ))
+                                        }
+                                    }
+                                    Err(error) => {
+                                        let mut msg = message_clone.lock().unwrap();
+                                        msg.error = Some(error);
+                                        if tx
+                                            .try_send(String::from("Failed to Encrypt file"))
+                                            .is_err()
+                                        {
+                                            msg.error = Some(Error::new(
+                                                ErrorKind::Other,
+                                                "Failed to refresh",
+                                            ))
+                                        }
+                                    }
                                 }
                             });
                         }
@@ -95,19 +112,37 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                             let mut output_path = file_struct.pwd.to_path_buf();
                             output_path.push(file_name);
                             let message_clone = Arc::clone(&file.files);
-                            task::spawn(async move {
-                                AesEncryptor::initialize().decrypt_file(&path, &output_path);
-                                let mut msg = message_clone.lock().unwrap();
-                                let pwd = msg.pwd.to_path_buf();
-                                if let Some(index) = msg.current_state.selected() {
-                                    msg.present_dir_fn(&pwd, Some(index));
-                                }
-                                if tx
-                                    .try_send(String::from("File Decryption completed"))
-                                    .is_err()
-                                {
-                                    msg.error =
-                                        Some(Error::new(ErrorKind::Other, "Failed to refresh"))
+                            tokio::spawn(async move {
+                                match AesEncryptor::new().decrypt_file(&path, &output_path) {
+                                    Ok(()) => {
+                                        let mut msg = message_clone.lock().unwrap();
+                                        let pwd = msg.pwd.to_path_buf();
+                                        if let Some(index) = msg.current_state.selected() {
+                                            msg.present_dir_fn(&pwd, Some(index));
+                                        }
+                                        if tx
+                                            .try_send(String::from("File Decryption completed"))
+                                            .is_err()
+                                        {
+                                            msg.error = Some(Error::new(
+                                                ErrorKind::Other,
+                                                "Failed to refresh",
+                                            ))
+                                        }
+                                    }
+                                    Err(error) => {
+                                        let mut msg = message_clone.lock().unwrap();
+                                        msg.error = Some(error);
+                                        if tx
+                                            .try_send(String::from("Failed to Decrypt file"))
+                                            .is_err()
+                                        {
+                                            msg.error = Some(Error::new(
+                                                ErrorKind::Other,
+                                                "Failed to refresh",
+                                            ))
+                                        }
+                                    }
                                 }
                             });
                         }
@@ -187,8 +222,6 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                     file_struct.error = None;
 
                     if let Some(index) = file_struct.current_state.selected() {
-                        file_struct.current_path =
-                            Some(file_struct.current_dir[index].to_path_buf());
                         if file_struct.current_dir.len() > index
                             && file_struct.current_dir[index].is_dir()
                         {
@@ -207,6 +240,8 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                                 }
                             });
                         }
+                        file_struct.current_path =
+                            Some(file_struct.current_dir[index].to_path_buf());
                     }
                 }
                 ViewMode::ContentView => file.text_scroll_y = file.text_scroll_y.saturating_sub(1),

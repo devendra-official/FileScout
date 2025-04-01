@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::{Read, Result, Write},
     path::Path,
 };
 
@@ -16,42 +16,41 @@ pub struct AesEncryptor<'a> {
 }
 
 impl AesEncryptor<'static> {
-    pub fn initialize() -> Self {
+    pub const fn new() -> Self {
         let key = KEY;
         let key = key.as_bytes();
         Self { key }
     }
-}
 
-impl AesEncryptor<'static> {
-    pub fn decrypt_file(&self, path: &Path, file_path: &Path) {
-        if let Ok(mut file) = File::open(path) {
-            let mut encrypted_data = Vec::new();
-            file.read_to_end(&mut encrypted_data).unwrap();
+    pub fn decrypt_file(&self, path: &Path, file_path: &Path) -> Result<()> {
+        let mut file = File::open(path)?;
+        let mut encrypted_data = Vec::new();
+        file.read_to_end(&mut encrypted_data)?;
 
-            let nonce = Nonce::from_slice(&encrypted_data[..12]);
-            let cipher = Aes256Gcm::new_from_slice(self.key).unwrap();
+        let nonce = Nonce::from_slice(&encrypted_data[..12]);
+        let cipher = Aes256Gcm::new_from_slice(self.key).unwrap();
 
-            let ciphertext = &encrypted_data[12..];
-            let plaintext = cipher.decrypt(&nonce, ciphertext).unwrap();
+        let ciphertext = &encrypted_data[12..];
+        let plaintext = cipher.decrypt(&nonce, ciphertext).unwrap();
 
-            let mut file = File::create(file_path).unwrap();
-            file.write_all(&plaintext).unwrap();
-        }
+        let mut file = File::create(file_path)?;
+        file.write_all(&plaintext)?;
+        Ok(())
     }
 
-    pub fn encrypt_file(&self, path: &Path, output: &Path) {
-        let mut file = File::open(path).unwrap();
+    pub fn encrypt_file(&self, path: &Path, output: &Path) -> Result<()> {
+        let mut file = File::open(path)?;
         let mut buf = Vec::new();
 
-        file.read_to_end(&mut buf).unwrap();
+        file.read_to_end(&mut buf)?;
 
         let cipher = Aes256Gcm::new_from_slice(self.key).unwrap();
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher.encrypt(&nonce, buf.as_ref()).unwrap();
 
-        let mut file = File::create(output).unwrap();
-        file.write_all(&nonce).unwrap();
-        file.write_all(&ciphertext).unwrap();
+        let mut file = File::create(output)?;
+        file.write_all(&nonce)?;
+        file.write_all(&ciphertext)?;
+        Ok(())
     }
 }
