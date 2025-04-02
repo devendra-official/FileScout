@@ -2,7 +2,7 @@ use ratatui::widgets::ListState;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
-    fs,
+    fs::{self, File},
     io::{Error, Result},
     path::{Path, PathBuf},
 };
@@ -179,5 +179,11 @@ impl FileStruct {
                 fs::rename(path, rename).unwrap_or_else(|error| self.error = Some(error));
             }
         }
+    }
+
+    pub fn create_file(&mut self, file_name: &str) -> Result<()> {
+        let pwd = self.pwd.to_path_buf();
+        File::create_new(pwd.join(file_name))?;
+        Ok(())
     }
 }

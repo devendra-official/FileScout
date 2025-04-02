@@ -17,7 +17,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
     let mut file_struct = file_clone.lock().unwrap();
 
     match file.mode {
-        ViewMode::Edit => match code {
+        ViewMode::Create | ViewMode::Edit => match code {
             KeyCode::Char(c) => {
                 file.input.name.push(c);
                 file.input.index = file.input.index.saturating_add(1);
@@ -27,14 +27,27 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                 file.input.index = file.input.index.saturating_sub(1);
             }
             KeyCode::Enter => {
-                file_struct.rename(&file.input.name);
-                file.mode = ViewMode::ListView;
+                match file.mode {
+                    ViewMode::Create => {
+                        match file_struct.create_file(&file.input.name) {
+                            Ok(()) => {}
+                            Err(error) => file_struct.error = Some(error),
+                        }
+                        reset_mode(file);
+                    }
+                    ViewMode::Edit => {
+                        file_struct.rename(&file.input.name);
+                        reset_mode(file);
+                    }
+                    _ => {}
+                }
+                reset_mode(file);
                 let pwd = file_struct.pwd.to_path_buf();
                 if let Some(index) = file_struct.current_state.selected() {
                     file_struct.present_dir_fn(&pwd, Some(index));
                 }
             }
-            KeyCode::Esc => file.mode = ViewMode::ListView,
+            KeyCode::Esc => reset_mode(file),
             _ => {}
         },
         _ => match code {
@@ -46,6 +59,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                     file.mode = ViewMode::Edit
                 }
             }
+            KeyCode::Char('n') | KeyCode::Char('N') => file.mode = ViewMode::Create,
             KeyCode::Char('e') | KeyCode::Char('E') => {
                 if let Some(index) = file_struct.current_state.selected() {
                     let path = file_struct.current_dir[index].to_path_buf();
@@ -273,5 +287,10 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
             },
             _ => {}
         },
+    }
+    fn reset_mode(file: &mut FileScout) {
+        file.input.name = String::new();
+        file.input.index = 0;
+        file.mode = ViewMode::ListView;
     }
 }

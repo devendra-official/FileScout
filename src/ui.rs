@@ -21,6 +21,7 @@ pub enum ViewMode {
     ListView,
     ContentView,
     Edit,
+    Create,
 }
 
 #[derive(Default)]
@@ -93,7 +94,6 @@ impl Widget for &mut FileScout {
 
         let files_struct_clone = Arc::clone(&self.files);
         let mut file_ex = files_struct_clone.lock().unwrap();
-
         self.render_pwd(pwd_area, buf, &mut file_ex);
         self.render_current(current_dir, buf, &mut file_ex);
         self.render_parent(parent_dir, buf, &mut file_ex);
@@ -181,12 +181,13 @@ impl FileScout {
             Widget::render(Text::from("No items"), padded_area, buf);
         }
         match self.mode {
-            ViewMode::Edit => self.render_window(padded_area, buf),
+            ViewMode::Edit => self.render_window(padded_area, buf, " Rename "),
+            ViewMode::Create => self.render_window(padded_area, buf, " New File "),
             _ => {}
         }
     }
 
-    fn render_window(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_window(&mut self, area: Rect, buf: &mut Buffer, title: &str) {
         let (sel_color, _) = COLORS[self.color_index];
         let [window] = Layout::horizontal([Constraint::Percentage(80)]).areas(area);
         let [window] = Layout::vertical([Constraint::Length(3)])
@@ -194,7 +195,7 @@ impl FileScout {
             .areas(window);
 
         Clear::default().render(window, buf);
-        let title = Line::from("Rename: ");
+        let title = Line::from(title);
         let block = Block::bordered()
             .title(title)
             .title_alignment(Alignment::Left)
