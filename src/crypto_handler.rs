@@ -31,7 +31,7 @@ impl AesEncryptor<'static> {
         let cipher = Aes256Gcm::new_from_slice(self.key).unwrap();
 
         let ciphertext = &encrypted_data[12..];
-        let plaintext = cipher.decrypt(&nonce, ciphertext).unwrap();
+        let plaintext = cipher.decrypt(nonce, ciphertext).unwrap();
 
         let mut file = File::create(file_path)?;
         file.write_all(&plaintext)?;

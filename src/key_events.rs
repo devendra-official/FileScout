@@ -1,6 +1,7 @@
 use std::{
     io::{Error, ErrorKind},
-    sync::Arc,
+    sync::{Arc, MutexGuard},
+    thread,
 };
 
 use crate::{
@@ -9,57 +10,41 @@ use crate::{
     explorer::FileStruct,
     ui::{FileScout, ViewMode},
 };
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 use tokio::sync::mpsc::Sender;
 
-pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
+pub fn handle_events(
+    file: &mut FileScout,
+    code: KeyCode,
+    tx: Sender<String>,
+    modifier: KeyModifiers,
+) {
     let file_clone = Arc::clone(&file.files);
     let mut file_struct = file_clone.lock().unwrap();
 
     match file.mode {
-        ViewMode::Create | ViewMode::Edit => match code {
-            KeyCode::Char(c) => {
-                file.input.name.push(c);
-                file.input.index = file.input.index.saturating_add(1);
-            }
-            KeyCode::Backspace => {
-                file.input.name.pop();
-                file.input.index = file.input.index.saturating_sub(1);
-            }
-            KeyCode::Enter => {
-                match file.mode {
-                    ViewMode::Create => {
-                        match file_struct.create_file(&file.input.name) {
-                            Ok(()) => {}
-                            Err(error) => file_struct.error = Some(error),
-                        }
-                        reset_mode(file);
-                    }
-                    ViewMode::Edit => {
-                        file_struct.rename(&file.input.name);
-                        reset_mode(file);
-                    }
-                    _ => {}
-                }
-                reset_mode(file);
-                let pwd = file_struct.pwd.to_path_buf();
-                if let Some(index) = file_struct.current_state.selected() {
-                    file_struct.present_dir_fn(&pwd, Some(index));
-                }
-            }
-            KeyCode::Esc => reset_mode(file),
-            _ => {}
-        },
+        ViewMode::FileEdit => handle_file_edit(code, file, file_struct, modifier),
+        ViewMode::Create | ViewMode::Rename => handle_file_name(code, file, file_struct),
         _ => match code {
             KeyCode::Char('q') | KeyCode::Char('Q') => file.exit = true,
             KeyCode::Char('r') | KeyCode::Char('R') => {
                 if let Some(path) = &file_struct.current_path {
-                    file.input.name = path.file_name().unwrap().to_str().unwrap().to_string();
-                    file.input.index = file.input.name.len();
-                    file.mode = ViewMode::Edit
+                    file.input.content = path.file_name().unwrap().to_str().unwrap().to_string();
+                    file.mode = ViewMode::Rename
                 }
             }
             KeyCode::Char('n') | KeyCode::Char('N') => file.mode = ViewMode::Create,
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                match file_struct.file_read() {
+                    Ok(content) => {
+                        file.input.total_lines = content.lines().count();
+                        file.input.total_letter = content.lines().next().unwrap_or_default().len();
+                        file.input.content = content;
+                        file.mode = ViewMode::FileEdit;
+                    }
+                    Err(error) => file_struct.error = Some(error),
+                };
+            }
             KeyCode::Char('e') | KeyCode::Char('E') => {
                 if let Some(index) = file_struct.current_state.selected() {
                     let path = file_struct.current_dir[index].to_path_buf();
@@ -70,7 +55,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                             let mut pwd = file_struct.pwd.to_path_buf();
                             pwd.push(file_name);
                             let message_clone = Arc::clone(&file.files);
-                            tokio::spawn(async move {
+                            thread::spawn(move || {
                                 match AesEncryptor::new().encrypt_file(&path, &pwd) {
                                     Ok(()) => {
                                         let mut msg = message_clone.lock().unwrap();
@@ -126,7 +111,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                             let mut output_path = file_struct.pwd.to_path_buf();
                             output_path.push(file_name);
                             let message_clone = Arc::clone(&file.files);
-                            tokio::spawn(async move {
+                            thread::spawn(move || {
                                 match AesEncryptor::new().decrypt_file(&path, &output_path) {
                                     Ok(()) => {
                                         let mut msg = message_clone.lock().unwrap();
@@ -172,7 +157,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
             KeyCode::Delete => {
                 if let Some(index) = file_struct.current_state.selected() {
                     let path = file_struct.current_dir[index].to_path_buf();
-                    FileStruct::delete(&path.as_path(), &mut file_struct);
+                    FileStruct::delete(path.as_path(), &mut file_struct);
                     let path = file_struct.pwd.to_path_buf();
                     let index = if index == 0 { 0 } else { index - 1 };
                     file_struct.present_dir_fn(path.as_path(), Some(index));
@@ -184,14 +169,13 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                     file.text_scroll_x = 0;
                     file.text_scroll_y = 0;
                 }
-                ViewMode::ListView => match file_struct.current_state.selected() {
-                    Some(index) => {
+                ViewMode::ListView => {
+                    if let Some(index) = file_struct.current_state.selected() {
                         if file_struct.current_dir[index].is_file() {
                             file.mode = ViewMode::ContentView
                         }
                     }
-                    None => {}
-                },
+                }
                 _ => {}
             },
             KeyCode::Down => match file.mode {
@@ -203,7 +187,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                             && file_struct.current_dir[index].is_dir()
                         {
                             let path = file_struct.current_dir[index].to_path_buf();
-                            file_struct.next_dir_fn(&path.as_path());
+                            file_struct.next_dir_fn(path.as_path());
                         } else if file_struct.current_dir.len() > index {
                             file_struct.content = String::new();
                             let file_path = file_struct.current_dir[index].to_path_buf();
@@ -224,7 +208,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                     }
                 }
                 ViewMode::ContentView => {
-                    if file.text_scroll_y < file_struct.line_count.saturating_sub(1) as u16 {
+                    if file.text_scroll_y < file_struct.line_count.saturating_sub(1) {
                         file.text_scroll_y = file.text_scroll_y.saturating_add(1)
                     }
                 }
@@ -240,7 +224,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                             && file_struct.current_dir[index].is_dir()
                         {
                             let path = file_struct.current_dir[index].to_path_buf();
-                            file_struct.next_dir_fn(&path.as_path());
+                            file_struct.next_dir_fn(path.as_path());
                         } else if file_struct.current_dir.len() > index {
                             file_struct.content = String::new();
                             let file_path = file_struct.current_dir[index].to_path_buf();
@@ -279,7 +263,7 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
                 ViewMode::ListView => {
                     if let Some(index) = file_struct.parent_state.selected() {
                         let path = file_struct.parent.to_path_buf();
-                        file_struct.present_dir_fn(&path.as_path(), Some(index));
+                        file_struct.present_dir_fn(path.as_path(), Some(index));
                     }
                 }
                 ViewMode::ContentView => file.text_scroll_x = file.text_scroll_x.saturating_sub(1),
@@ -288,9 +272,146 @@ pub fn handle_events(file: &mut FileScout, code: KeyCode, tx: Sender<String>) {
             _ => {}
         },
     }
-    fn reset_mode(file: &mut FileScout) {
-        file.input.name = String::new();
-        file.input.index = 0;
-        file.mode = ViewMode::ListView;
+}
+
+fn handle_file_edit(
+    code: KeyCode,
+    file: &mut FileScout,
+    mut file_struct: MutexGuard<FileStruct>,
+    modifier: KeyModifiers,
+) {
+    let mut line = file.input.content.lines();
+    match (code, modifier) {
+        (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+            file_struct.file_write(file.input.content.clone());
+            let pwd = file_struct.pwd.to_path_buf();
+            reset_mode(file);
+            if let Some(index) = file_struct.current_state.selected() {
+                file_struct.present_dir_fn(&pwd, Some(index));
+            }
+            file.text_scroll_y = 0;
+            file.text_scroll_x = 0;
+        }
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+            reset_mode(file);
+            file.text_scroll_y = 0;
+            file.text_scroll_x = 0;
+        }
+        (KeyCode::Char(ch), _) => {
+            edit_content(file, ch);
+            file.text_scroll_x = file.text_scroll_x.saturating_add(1)
+        }
+        (KeyCode::Enter, _) => {
+            edit_content(file, '\n');
+            file.text_scroll_y = file.text_scroll_y.saturating_add(1);
+            file.text_scroll_x = 0;
+            file.input.content.push_str("");
+        }
+        (KeyCode::Backspace, _) => {
+            remove_at(file);
+            file.text_scroll_x = file.text_scroll_x.saturating_sub(1);
+        }
+        (KeyCode::Tab, _) => {
+            edit_content(file, ' ');
+            file.text_scroll_x = file.text_scroll_x.saturating_add(1);
+        }
+        (KeyCode::Down, _) => {
+            let mut lines = file.input.content.lines();
+            if file.text_scroll_y < lines.clone().count().saturating_sub(1) {
+                file.text_scroll_y = file.text_scroll_y.saturating_add(1);
+                file.input.total_letter = lines.nth(file.text_scroll_y).unwrap_or_default().len();
+                if file.text_scroll_x > file.input.total_letter {
+                    file.text_scroll_x = file.input.total_letter
+                }
+            }
+        }
+        (KeyCode::Up, _) => {
+            file.text_scroll_y = file.text_scroll_y.saturating_sub(1);
+            file.input.total_letter = line.nth(file.text_scroll_y).unwrap_or_default().len();
+            if file.text_scroll_x > file.input.total_letter {
+                file.text_scroll_x = file.input.total_letter
+            }
+        }
+        (KeyCode::Left, _) => {
+            if file.text_scroll_x == 0 && file.text_scroll_y != 0 {
+                file.text_scroll_y = file.text_scroll_y.saturating_sub(1);
+                file.input.total_letter = line.nth(file.text_scroll_y).unwrap_or_default().len();
+                file.text_scroll_x = file.input.total_letter;
+                return;
+            }
+            file.text_scroll_x = file.text_scroll_x.saturating_sub(1);
+        }
+        (KeyCode::Right, _) => {
+            if file.text_scroll_x == file.input.total_letter {
+                file.text_scroll_x = 0;
+                file.text_scroll_y = file.text_scroll_y.saturating_add(1);
+                file.input.total_letter = line.nth(file.text_scroll_y).unwrap_or_default().len();
+                return;
+            }
+            file.text_scroll_x = file.text_scroll_x.saturating_add(1);
+        }
+        _ => {}
     }
+}
+
+fn edit_content(file: &mut FileScout, ch: char) {
+    let lines = file.input.content.lines();
+    if file.input.content.lines().count() == 0 {
+        file.input.content.insert(0, ch);
+    } else {
+        let mut list: Vec<String> = lines.map(|ln| ln.to_string()).collect();
+        if list.len() > file.text_scroll_y {
+            list[file.text_scroll_y].insert(file.text_scroll_x, ch);
+            file.input.content = list.join("\n");
+        } else {
+            file.input.content.push(ch);
+        }
+    }
+}
+
+fn remove_at(file: &mut FileScout) {
+    let lines = file.input.content.lines();
+    if file.input.content.lines().count() != 0 {
+        let mut list: Vec<String> = lines.map(|ln| ln.to_string()).collect();
+        if list.len() > file.text_scroll_y {
+            if list[file.text_scroll_y].len() >= file.text_scroll_x {
+                list[file.text_scroll_y].remove(file.text_scroll_x.saturating_sub(1));
+                file.input.content = list.join("\n");
+            }
+        } else {
+            file.input.content.pop();
+            file.text_scroll_y = file.text_scroll_y.saturating_sub(1)
+        }
+    }
+}
+
+fn handle_file_name(code: KeyCode, file: &mut FileScout, mut file_struct: MutexGuard<FileStruct>) {
+    match code {
+        KeyCode::Char(c) => file.input.content.push(c),
+        KeyCode::Backspace => {
+            file.input.content.pop();
+        }
+        KeyCode::Enter => {
+            if file.mode == ViewMode::Create {
+                match file_struct.create_file(&file.input.content) {
+                    Ok(()) => {}
+                    Err(error) => file_struct.error = Some(error),
+                }
+            } else if file.mode == ViewMode::Rename {
+                file_struct.rename(&file.input.content);
+            }
+            reset_mode(file);
+            let pwd = file_struct.pwd.to_path_buf();
+            if let Some(index) = file_struct.current_state.selected() {
+                file_struct.present_dir_fn(&pwd, Some(index));
+            }
+        }
+        KeyCode::Esc => reset_mode(file),
+        _ => {}
+    }
+}
+
+fn reset_mode(file: &mut FileScout) {
+    file.input.content.clear();
+    file.mode = ViewMode::ListView;
 }

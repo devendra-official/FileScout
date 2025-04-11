@@ -39,6 +39,7 @@ Use the arrow keys to navigate through directories and files. Press `Enter` to v
 - `C`: Change the color scheme
 - `E`: File Encryption
 - `D`: File Decryption
+- `O`: Open File
 - `Delete`: Delete the selected file
 - `Q`: Quit the application
 

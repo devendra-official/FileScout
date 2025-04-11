@@ -3,7 +3,7 @@ use ratatui::widgets::ListState;
 use std::os::unix::fs::PermissionsExt;
 use std::{
     fs::{self, File},
-    io::{Error, Result},
+    io::{Error, ErrorKind, Result},
     path::{Path, PathBuf},
 };
 
@@ -90,10 +90,7 @@ impl FileStruct {
         }
         let files = FileStruct::get_dirs_and_files(pwd.as_path());
 
-        let index = match index {
-            Some(idx) => idx,
-            None => 0,
-        };
+        let index = index.unwrap_or_default();
         self.current_state.select(Some(index));
         self.current_path = Some(files[index].to_path_buf());
         if !files.is_empty() {
@@ -185,5 +182,19 @@ impl FileStruct {
         let pwd = self.pwd.to_path_buf();
         File::create_new(pwd.join(file_name))?;
         Ok(())
+    }
+
+    pub fn file_write(&mut self, content: String) {
+        if let Some(path) = &self.current_path {
+            fs::write(path, content).unwrap_or_else(|error| self.error = Some(error));
+        }
+    }
+
+    pub fn file_read(&mut self) -> Result<String> {
+        if let Some(path) = &self.current_path {
+            let content = fs::read_to_string(path)?;
+            return Ok(content);
+        }
+        Err(Error::new(ErrorKind::Unsupported, ""))
     }
 }
